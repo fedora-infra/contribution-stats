@@ -1,0 +1,13 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Contact: Fedora Infrastructure <infrastructure@lists.fedoraproject.org>
+Source: https://github.com/fedora-infra/contribution-stats
+
+# Sample paragraph, commented out:
+#
+# Files: src/*
+# Copyright: $YEAR $NAME <$CONTACT>
+# License: ...
+
+Files: *.yaml *.md *.toml .gitignore .github/*
+Copyright: 2023 Contributors to the Fedora Project
+License: GPL-3.0-or-later
