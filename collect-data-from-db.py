@@ -56,6 +56,8 @@ def make_db(connection, table):
         )
     """
     )
+    for col in ("timestamp", "year", "month", "by"):
+        connection.execute(f"CREATE INDEX IF NOT EXISTS ix_{table}_{col} ON {table}({col})")
 
 
 def next_month(date):

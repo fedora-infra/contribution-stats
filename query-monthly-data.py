@@ -20,8 +20,22 @@ def for_each_month(start):
         current_date = current_date.replace(day=1)
 
 
+def _show_date(month):
+    if month is None:
+        return None
+    return month.strftime("%Y-%m")
+
+
 def month_filter(month):
     return f"year = {month.year} AND month = {month.month}"
+
+
+def _get_months_left(db, month):
+    result = db.execute(
+        "SELECT COUNT(DISTINCT(year || '-' || month)) FROM commits WHERE timestamp > ?",
+        (month.strftime("%Y-%m-%d"),),
+    )
+    return result.fetchone()[0] - 1
 
 
 def orphaned(db, month):
@@ -87,6 +101,50 @@ def committers(db, month):
     return result.fetchone()[0]
 
 
+def _committers_in_future_months(db, month, committers):
+    next_month = month + timedelta(days=31)
+    next_month = next_month.replace(day=1)
+    result = db.execute(
+        f"SELECT \"by\" FROM commits WHERE \"by\" IN ({','.join('?' for _ in committers)}) "
+        'AND timestamp >= ? group by "by"',
+        [*committers, next_month.strftime("%Y-%m-%d")],
+    )
+    return [r[0] for r in result]
+
+
+def orphaners_gone(db, month):
+    if _get_months_left(db, month) <= 3:
+        return None
+    result = db.execute("SELECT DISTINCT(by) FROM orphaned WHERE " + month_filter(month))
+    orphaners_this_month = [r[0] for r in result]
+    committers_in_future_months = _committers_in_future_months(db, month, orphaners_this_month)
+    gone = set(orphaners_this_month) - set(committers_in_future_months)
+    return len(gone)
+
+
+def committers_gone(db, month):
+    if _get_months_left(db, month) <= 3:
+        return None
+    result = db.execute("SELECT DISTINCT(by) FROM commits WHERE " + month_filter(month))
+    committers_this_month = [r[0] for r in result]
+    committers_in_future_months = _committers_in_future_months(db, month, committers_this_month)
+    gone = set(committers_this_month) - set(committers_in_future_months)
+    # print(month, list(sorted(list(c_gone))))
+    # next_month = month + timedelta(days=31)
+    # next_month = next_month.replace(day=1)
+    # c_gone = []
+    # for committer in committers_this_month:
+    #     result = db.execute(
+    #         "SELECT COUNT(*) FROM commits WHERE \"by\" = ? AND timestamp >= ?",
+    #         (committer, next_month.strftime("%Y-%m-%d"))
+    #     )
+    #     amount = result.fetchone()[0]
+    #     if amount == 0:
+    #         c_gone.append(committer)
+    # print(month, list(sorted(c_gone)))
+    return len(gone)
+
+
 @click.command()
 @click.argument("input_file", type=click.Path(), required=True)
 @click.argument("output_file", type=click.Path(), required=True)
@@ -106,23 +164,29 @@ def main(input_file, output_file):
                 "Avg adoption days",
                 "Packages with commits",
                 "Committers",
+                "Orphaners who left",
+                "Committers who left",
             ]
         )
-        for month in for_each_month(start):
-            avg_adoption_time = adoption(connection, month)
-            csvwriter.writerow(
-                [
-                    month.strftime("%Y-%m"),
-                    orphaned(connection, month),
-                    orphaners(connection, month),
-                    retired(connection, month),
-                    adopted(connection, month),
-                    adopters(connection, month),
-                    f"{avg_adoption_time:.02f}" if avg_adoption_time else "",
-                    committed(connection, month),
-                    committers(connection, month),
-                ]
-            )
+        all_months = list(for_each_month(start))
+        with click.progressbar(all_months, item_show_func=_show_date) as bar:
+            for month in bar:
+                avg_adoption_time = adoption(connection, month)
+                csvwriter.writerow(
+                    [
+                        month.strftime("%Y-%m"),
+                        orphaned(connection, month),
+                        orphaners(connection, month),
+                        retired(connection, month),
+                        adopted(connection, month),
+                        adopters(connection, month),
+                        f"{avg_adoption_time:.02f}" if avg_adoption_time else "",
+                        committed(connection, month),
+                        committers(connection, month),
+                        orphaners_gone(connection, month),
+                        committers_gone(connection, month),
+                    ]
+                )
 
 
 if __name__ == "__main__":
